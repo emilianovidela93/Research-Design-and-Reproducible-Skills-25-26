@@ -1,29 +1,173 @@
 ---
-title: "Res Design and Repr Skills 25_26"
-output: html_document
+title: "Research Design and Reproducible Skills 25/26"
 date: "2026-01-09"
+output: 
+  html_document:
+    toc: true
+    number_sections: true
+    toc_float: true
+
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 ```
 
-## R Markdown
+# Assessment
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
+## Requesting libraries
+We first need to request the library needed to import the data into RStudio and to create the plots. 
+```{r, message = FALSE, warning= FALSE}
+library(tidyverse)
+library(ggrepel)
+library(scales)
 ```
 
-## Including Plots
+## Tasks
 
-You can also embed plots, for example:
+The students will be reproducing figures 3, 4, and 5 from the paper called "Empowering moms: Supervised HIIT vs self-performed moderate intensity physical during pregnancy and the battle against depression and poor mental health in the postpartum period - The follow-up of a randomized controlled trial" written by Tamara Walczac-Kozłowska and colleagues. 
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+### Importing the data, selecting the variables of interest, and getting the variables in the correct format.
+```{r, message = FALSE, warning = FALSE}
+file_path = "~/Research-Design-and-Reproducible-Skills-25-26/data"
+data_paper = read.csv(file.path(file_path, "HIIT-postpartum-depression.csv"))
+
+#We are selecting the variables that we will then visualise by replicating Figures 3, 4, and 5 of the research article
+#Additionally, we make sure that the variables are in the correct format. Particularly for the EPDS, the levels of the factor are changed to EDU and HIIT
+variables_of_interest = data_paper %>%
+  select(Group = Intervention.group,
+         EPDS = Edinburg.Postnatal.Depression.Scale.Score,
+         PRE_FS_MCS = PRE.FS.scale,
+         PRE_FS_PCS = PRE.SF.12..PCS..physicalhealthscale,
+         POST_FS_MCS = POST.FS.score,
+         POST_FS_PCS = POST.SF12..PCS.,
+         PostPartum_FS_MCS = Postnatal.Florishing.scale.score,
+         PostPartum_FS_PCS = Postnatal.SF.12.PCS) %>%
+  mutate(Group = factor(Group, levels = c(1,2), labels = c("HIIT", "EDU")),
+         EPDS = as.numeric(EPDS),
+         POST_FS_MCS = as.numeric(POST_FS_MCS),
+         POST_FS_PCS = as.numeric(POST_FS_PCS),
+         PostPartum_FS_MCS = as.numeric(PostPartum_FS_MCS),
+         PostPartum_FS_PCS = as.numeric(PostPartum_FS_PCS))
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+## Figure 3
+Figure three shows a stacked bar chart with an horizontal layout. In the y-axis, two groups are shown (Educational Intervention Group - EDI, and High Intensity Interval Training Group - HIIT). In the x-axis, the Edinburgh Postnatal Depression Scale (EPDS) is shown. 
+
+```{r}
+#We first select the variables needed by creating a table and removing missing values
+EPDS_Groups = variables_of_interest %>%
+  select(Group, EPDS) %>%
+  na.omit()
+
+#The authors combined some of the scores into one single category. They combined values as follow:
+  #Values lower than 10: "range indicating the norm (below 10 points)"
+  #Values equal to 10 or 11: "slighlty increased severity of PPD symptoms (10-11 points)"
+  #Values greater than 12: increased severity of PPD symptoms (12 or more points)"
+EPDS_Groups = EPDS_Groups %>%
+  mutate(range_EPDS = case_when(
+    EPDS < 10 ~ "range indicating the norm (below 10 points)",
+    EPDS == 10 | EPDS == 11 ~ "slightly increased severity of PPD symptoms (10-11 points",
+    EPDS >12 ~ "increased severity of PPD symptoms (12 or more points)"
+  )) 
+
+#To reproduce figure 3, we need to calculate the counts and then the percentages of each one of the EPDS scale and the two groups (EDI or HIIT)
+table_Group_EPDS = EPDS_Groups %>%
+  group_by(Group,range_EPDS) %>%
+  summarise(counts = n())
+
+table_Group_EPDS$percentage = c(8.82, 76.47, 14.71, 16, 76, 8)
+
+#Before plotting, the levels of the new variable, rango of EPDS, need to be in the correct order (for the stacked bar plot)
+table_Group_EPDS$range_EPDS = factor(table_Group_EPDS$range_EPDS, levels = c("range indicating the norm (below 10 points)",  "slightly increased severity of PPD symptoms (10-11 points", "increased severity of PPD symptoms (12 or more points)"))
+
+#Plotting the percentages of EPDS vs Groups
+ggplot(table_Group_EPDS, aes(x = percentage, y = Group, fill = range_EPDS)) +
+  geom_bar(stat = "identity",position = position_fill(reverse = TRUE)) +
+  labs(title = "Distribution of EPDS results in the HIIT and EDU groups \n in the postpartum assessment",
+       x = "Percentage of EPDS scores",
+       y = "") + 
+  scale_fill_manual(values = c("lightblue", "darkblue", "darkred"))+
+  guides(fill = guide_legend(title = "Cut-off points")) + 
+  theme(legend.position = "bottom", legend.direction = "vertical") +
+  scale_x_continuous(labels = percent)
+```
+## Figures 4 and 5
+Figure four shows the means and the standard deviations before and after the intervention (during pregnancy), and postpartum of the scores related to psychological well-being and physical health, according to the groups. In both figures, the means are shown as dots connected by a line, while the sd is shown as a vertical line. 
+```{r}
+#We first calculate the means and the sds for each variable (before and after the intervention, and postpartum). We need the table to display the groups and the means/sds as colums, so we apply the pivot longer function to get the table in the correct format. 
+table_group_MCS_mean = variables_of_interest %>%
+  group_by(Group) %>%
+  summarise(
+    PRE_FS_MCS = mean(PRE_FS_MCS, na.rm = TRUE),
+    POST_FS_MCS = mean(POST_FS_MCS, na.rm = TRUE),
+    Postpartum_FS_MCS = mean(PostPartum_FS_MCS, na.rm = TRUE),
+  ) %>%
+  pivot_longer(!Group, names_to = "time_point", values_to = "mean")
+
+table_group_MCS_sd = variables_of_interest %>%
+  group_by(Group) %>%
+  summarise(
+    PRE_FS_MCS = sd(PRE_FS_MCS, na.rm = TRUE),
+    POST_FS_MCS = sd(POST_FS_MCS, na.rm = TRUE),
+    Postpartum_FS_MCS = sd(PostPartum_FS_MCS, na.rm = TRUE)
+  ) %>%
+  pivot_longer(!Group, names_to = "time_point", values_to = "sd")
+
+#We merge both tables into one and we move forward with plotting the outcomes. 
+table_group_MCS_complete = merge(table_group_MCS_mean,table_group_MCS_sd, by.x = c("Group","time_point"), by.y = c("Group","time_point"))
+  
+ggplot (table_group_MCS_complete, aes(x=time_point, y = mean)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = mean-sd, ymax = mean+sd), width = 0.2,
+                position = position_dodge(0.05)) + 
+  geom_line(aes(group = Group, linetype = Group)) + 
+  labs(title = "Between-group differences in Psychological well-being",
+       x = "Psychological well-being (measured with Flourishing Scale)",
+       y = "") +
+  scale_x_discrete(limits = c("PRE_FS_MCS", "POST_FS_MCS", "Postpartum_FS_MCS"),
+                   labels = c("PRE_FS_MCS" = "Before the intervention",
+                              "POST_FS_MCS" = "After the intervention",
+                              "Postpartum_FS_MCS" = "Follow-up")) +
+  theme(legend.position = "bottom") + 
+  geom_text_repel(aes(x=time_point, y = mean, label = round(mean,2)))
+              
+```
+
+```{r}
+table_group_PCS_mean = variables_of_interest %>%
+  group_by(Group) %>%
+  summarise(
+    PRE_FS_PCS = mean(PRE_FS_PCS, na.rm = TRUE),
+    POST_FS_PCS = mean(POST_FS_PCS, na.rm = TRUE),
+    Postpartum_FS_PCS = mean(PostPartum_FS_PCS, na.rm = TRUE),
+  ) %>%
+  pivot_longer(!Group, names_to = "time_point", values_to = "mean")
+
+table_group_PCS_sd = variables_of_interest %>%
+  group_by(Group) %>%
+  summarise(
+    PRE_FS_PCS = sd(PRE_FS_PCS, na.rm = TRUE),
+    POST_FS_PCS = sd(POST_FS_PCS, na.rm = TRUE),
+    Postpartum_FS_PCS = sd(PostPartum_FS_PCS, na.rm = TRUE)
+  ) %>%
+  pivot_longer(!Group, names_to = "time_point", values_to = "sd")
+
+table_group_PCS_complete = merge(table_group_PCS_mean,table_group_PCS_sd, by.x = c("Group","time_point"), by.y = c("Group","time_point"))
+  
+ggplot (table_group_PCS_complete, aes(x=time_point, y = mean)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = mean-sd, ymax = mean+sd), width = 0.2,
+                position = position_dodge(0.05)) + 
+  geom_line(aes(group = Group, linetype = Group)) + 
+  labs(title = "Between-group differences in physical health",
+       x = "Physical health (measured with Short Form Health Survey - physical subscale)",
+       y = "") +
+  scale_x_discrete(limits = c("PRE_FS_PCS", "POST_FS_PCS", "Postpartum_FS_PCS"),
+                   labels = c("PRE_FS_PCS" = "Before the intervention",
+                              "POST_FS_PCS" = "After the intervention",
+                              "Postpartum_FS_PCS" = "Follow-up")) +
+  theme(legend.position = "bottom") + 
+  geom_text_repel(aes(x=time_point, y = mean, label = round(mean,2)))
+```
+
